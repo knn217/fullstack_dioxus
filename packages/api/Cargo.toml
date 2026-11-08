@@ -1,7 +1,11 @@
 [package]
 name = "api"
-version = { workspace = true }
-edition = { workspace = true }
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
 
 [dependencies]
 dioxus = { workspace = true, features = ["fullstack"] }
