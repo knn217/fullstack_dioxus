@@ -6,7 +6,13 @@ members = [
     "packages/desktop",
     "packages/mobile",
     "packages/api",
+    "packages/fullstack",
 ]
+
+[workspace.package]
+rust-version = "1.95"
+version = "0.1.0"
+edition = "2021"
 
 [workspace.dependencies]
 dioxus = { version = "0.7.1" }
@@ -14,3 +20,4 @@ dioxus = { version = "0.7.1" }
 # workspace
 ui = { path = "packages/ui" }
 api = { path = "packages/api" }
+fullstack = { path = "packages/fullstack" }

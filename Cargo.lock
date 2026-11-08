@@ -1017,7 +1017,7 @@ name = "desktop"
 version = "0.1.0"
 dependencies = [
  "dioxus",
- "ui",
+ "fullstack",
 ]
 
 [[package]]
@@ -1998,6 +1998,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "fullstack"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+ "ui",
 ]
 
 [[package]]
@@ -3480,7 +3488,7 @@ name = "mobile"
 version = "0.1.0"
 dependencies = [
  "dioxus",
- "ui",
+ "fullstack",
 ]
 
 [[package]]
@@ -6180,7 +6188,7 @@ name = "web"
 version = "0.1.0"
 dependencies = [
  "dioxus",
- "ui",
+ "fullstack",
 ]
 
 [[package]]

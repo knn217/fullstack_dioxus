@@ -1,0 +1,11 @@
+[package]
+name = "fullstack"
+version = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+dioxus = { workspace = true, features = ["fullstack"] }
+ui = { workspace = true }
+
+[features]
+server = ["ui/server"]

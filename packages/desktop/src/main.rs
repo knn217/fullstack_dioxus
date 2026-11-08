@@ -1,5 +1,5 @@
-use ui::layout;
+use fullstack;
 
 fn main() {
-    dioxus::launch(layout::App);
+    fullstack::main_fullstack();
 }
