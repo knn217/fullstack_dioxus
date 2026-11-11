@@ -7,6 +7,7 @@ members = [
     "packages/mobile",
     "packages/api",
     "packages/fullstack",
+    "packages/crdb_extract",
 ]
 
 [workspace.package]
@@ -21,6 +22,7 @@ dioxus = { version = "0.7.1" }
 ui = { path = "packages/ui" }
 api = { path = "packages/api" }
 fullstack = { path = "packages/fullstack" }
+crdb_extract = { path = "packages/crdb_extract" }
 
 [workspace.lints.clippy]
 # Enable a whole group, setting priority so individual overrides work smoothly
