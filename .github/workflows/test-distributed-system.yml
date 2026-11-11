@@ -96,7 +96,7 @@ jobs:
             --from-file=certs/client.root.crt \
             --from-file=certs/client.root.key
 
-          sed "s/host\.k3d\.internal/${HOST_IP}/g" ./dx-web-server.yml | $K apply -f -
+          sed "s/__HOST_IP__/${HOST_IP}/g" ./dx-web-server.yml | $K apply -f -
 
           if ! $K rollout status deploy/dx-web-server --timeout=30s; then
             $K get pods -o wide

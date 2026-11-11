@@ -14,6 +14,10 @@ spec:
       labels:
         app: dx-web-server
     spec:
+      hostAliases:
+        - ip: "__HOST_IP__"
+          hostnames:
+            - "crdb-cockroachdb-public"
       containers:
         - name: dx-web-server
           image: dx_web_server_img:latest
@@ -26,7 +30,7 @@ spec:
             - name: PORT
               value: "8080"
             - name: DATABASE_URL
-              value: "postgresql://root@host.k3d.internal:26257/defaultdb?sslmode=verify-ca&sslrootcert=/certs/ca.crt&sslcert=/certs/client.root.crt&sslkey=/certs/client.root.key"
+              value: "postgresql://root@crdb-cockroachdb-public:26257/defaultdb?sslmode=verify-full&sslrootcert=/certs/ca.crt&sslcert=/certs/client.root.crt&sslkey=/certs/client.root.key"
           readinessProbe:
             httpGet:
               path: /ping
