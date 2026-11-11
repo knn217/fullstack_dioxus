@@ -1,4 +1,4 @@
-name: k3d-cockroach
+name: test-distributed-system
 on: [push, workflow_dispatch]
 
 jobs:
