@@ -1,0 +1,15 @@
+services:
+  dx_web_server:
+    image: dx_web_server_img
+    # environment:
+    #   DATABASE_URL: "postgresql://user_be@${COCKROACH_CLUSTER_IP}/chat_db?${JDBC_OPTIONS}"
+    #   CHAT_BE_PORT: 8090
+    build:
+      context: .
+      dockerfile: ./Dockerfile.server
+    ports:
+      - "8090:8090"
+
+# volumes:
+#   db:
+#     driver: local

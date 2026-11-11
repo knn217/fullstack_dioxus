@@ -1,0 +1,30 @@
+# Stage 1: Compute a recipe file for caching dependencies
+FROM ghcr.io/lewimbes/dioxus-docker:latest AS chef
+RUN cargo install cargo-chef
+WORKDIR /web_builder
+
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+COPY --from=planner /web_builder/recipe.json recipe.json
+RUN cargo chef cook --profile=release --package=web --recipe-path=recipe.json
+
+# Build the binary for image
+COPY . .
+RUN dx bundle --release --package=web
+
+# Create a new stage with a minimal image
+FROM debian:bookworm-slim
+# Install required runtime libraries (like OpenSSL and SSL certificates)
+# RUN apt-get update && apt-get install -y \
+#     libssl3 \
+#     ca-certificates \
+#     && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+
+# Copy the bin from builder into the new minimal image
+COPY --from=builder /web_builder/target/dx/web/release/web /app/web
+ENTRYPOINT ["/app/web/server"]
+EXPOSE 8080
