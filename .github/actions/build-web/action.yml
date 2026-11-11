@@ -1,0 +1,31 @@
+name: 'Build Web'
+description: 'Sets up buildx, builds Dioxus web server, and exports tarball'
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Dioxus web server with cache
+      uses: docker/bake-action@v2.3.0
+      with:
+        files: docker-compose.yml
+        targets: dx_web_server
+        push: false
+        set: |
+          dx_web_server.cache-from=type=gha
+          dx_web_server.cache-to=type=gha,mode=max
+          dx_web_server.output=type=docker
+
+    - name: Export Dioxus web image to tarball
+      shell: bash
+      run: docker save -o ./dx-web-server.tar "dx_web_server_img"
+
+    - name: Verify dx web tar file exists
+      shell: bash
+      run: |
+        if [ ! -f "./dx-web-server.tar" ]; then
+          echo "::error::Backend image tarball not found"
+          exit 1
+        fi
+        file "./dx-web-server.tar"

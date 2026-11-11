@@ -1,0 +1,29 @@
+name: 'Setup DB'
+description: 'Installs k3d, starts CockroachDB, port-forwards, and validates'
+runs:
+  using: "composite"
+  steps:
+    - name: Install k3d
+      shell: bash
+      run: curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+
+    - name: Create k3d cluster and deploy CockroachDB
+      shell: bash
+      run: |
+        db_env_output=$(bash scripts/k3d-cockroach.sh | grep "DATABASE_URL=" | head -n 1 || true)
+        if [ -z "$db_env_output" ]; then
+          echo "::error::Failed to find DATABASE_URL in script output."
+          exit 1
+        fi
+        cleaned_url=$(printf '%s\n' "$db_env_output" | sed -E 's/^.*DATABASE_URL=//; s/[[:space:]]+$//' | tr -d "\"'")
+        echo "DATABASE_URL=$cleaned_url" >> $GITHUB_ENV
+
+    - name: Port-forward the database
+      shell: bash
+      run: |
+        kubectl port-forward --address 0.0.0.0 svc/crdb-cockroachdb-public 26257:26257 >/tmp/pf-db.log 2>&1 &
+        for _ in $(seq 30); do (exec 3<>/dev/tcp/127.0.0.1/26257) 2>/dev/null && break; sleep 1; done
+
+    - name: Validate the database
+      shell: bash
+      run: bash scripts/test-cockroach.sh

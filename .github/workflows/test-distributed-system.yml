@@ -2,14 +2,17 @@ name: test-distributed-system
 on: [push, workflow_dispatch]
 
 jobs:
-  # Runs database setup & build web in parallel
-  call-setup-db:
-    uses: ./.github/workflows/setup-db.yml
+  test-distributed-system:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  call-build-web:
-    uses: ./.github/workflows/build-web.yml
+      - name: 1. Setup Database
+        uses: ./.github/actions/setup-db
 
-  # Runs after both parallel jobs complete successfully
-  call-setup-web:
-    needs: [call-setup-db, call-build-web]
-    uses: ./.github/workflows/setup-web.yml
+      - name: 2. Build Web Server
+        uses: ./.github/actions/build-web
+
+      - name: 3. Setup and Test Web Server
+        uses: ./.github/actions/setup-web

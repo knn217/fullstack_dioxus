@@ -1,0 +1,58 @@
+name: 'Setup Web'
+description: 'Creates web cluster, imports image, deploys, port-forwards, and tests ping'
+runs:
+  using: "composite"
+  steps:
+    - name: Create dedicated k3d cluster for Dioxus web server
+      shell: bash
+      run: k3d cluster create dx-web-cluster --agents 1
+
+    - name: Import web server image into dx-web-cluster
+      shell: bash
+      run: k3d image import ./dx-web-server.tar --cluster dx-web-cluster
+
+    - name: Deploy and run Dioxus web server in its own cluster
+      shell: bash
+      run: |
+        K="kubectl --context k3d-dx-web-cluster"
+        HOST_IP=$(docker network inspect k3d-dx-web-cluster -f '{{(index .IPAM.Config 0).Gateway}}')
+        if [ -z "$HOST_IP" ]; then
+          echo "::error::Could not determine Docker gateway IP"
+          exit 1
+        fi
+
+        $K create secret generic dx-db-certs \
+          --from-file=certs/ca.crt \
+          --from-file=certs/client.root.crt \
+          --from-file=certs/client.root.key
+
+        sed "s/__HOST_IP__/${HOST_IP}/g" ./dx-web-server.yml | $K apply -f -
+
+        if ! $K rollout status deploy/dx-web-server --timeout=30s; then
+          $K get pods -o wide
+          $K logs -l app=dx-web-server --tail=100 || true
+          exit 1
+        fi
+
+    - name: Port-forward the web server
+      shell: bash
+      run: |
+        kubectl --context k3d-dx-web-cluster port-forward svc/dx-web-server 8080:8080 >/dev/null 2>&1 &
+        for _ in $(seq 30); do (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null && break; sleep 1; done
+
+    - name: Ping web server
+      shell: bash
+      run: |
+        for _ in $(seq 15); do
+          output=$(curl -s -w "---HTTP_CODE_SPLIT---%{http_code}" http://127.0.0.1:8080/ping || true)
+          response="${output%%---HTTP_CODE_SPLIT---*}"
+          http_code="${output##*---HTTP_CODE_SPLIT---}"
+
+          if [ "$http_code" = "200" ] && [ "$response" = "pong" ]; then
+            echo "Successfully received HTTP 200 and 'pong'"
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "::error::Failed to get HTTP 200 and 'pong'"
+        exit 1
