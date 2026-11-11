@@ -82,22 +82,27 @@ jobs:
       - name: Deploy and run Dioxus web server in its own cluster
         run: |
           K="kubectl --context k3d-dx-web-cluster"
+
+          # Host as seen from inside the web cluster's Docker network (no DNS needed)
+          HOST_IP=$(docker network inspect k3d-dx-web-cluster -f '{{(index .IPAM.Config 0).Gateway}}')
+          if [ -z "$HOST_IP" ]; then
+            echo "::error::Could not determine the Docker gateway IP for k3d-dx-web-cluster"
+            exit 1
+          fi
+          echo "Web cluster reaches the host at $HOST_IP"
+
           $K create secret generic dx-db-certs \
             --from-file=certs/ca.crt \
             --from-file=certs/client.root.crt \
             --from-file=certs/client.root.key
-          $K apply -f ./dx-web-server.yml
-          if ! $K rollout status deploy/dx-web-server --timeout=10s; then
-            echo "::group::pods"
+
+          sed "s/host\.k3d\.internal/${HOST_IP}/g" ./dx-web-server.yml | $K apply -f -
+
+          if ! $K rollout status deploy/dx-web-server --timeout=30s; then
             $K get pods -o wide
-            echo "::endgroup::"
-            echo "::group::describe"
             $K describe pods -l app=dx-web-server
-            echo "::endgroup::"
-            echo "::group::logs"
             $K logs -l app=dx-web-server --tail=100 || true
             $K logs -l app=dx-web-server --previous --tail=100 || true
-            echo "::endgroup::"
             exit 1
           fi
 
