@@ -81,12 +81,25 @@ jobs:
 
       - name: Deploy and run Dioxus web server in its own cluster
         run: |
-          kubectl --context k3d-dx-web-cluster create secret generic dx-db-certs \
+          K="kubectl --context k3d-dx-web-cluster"
+          $K create secret generic dx-db-certs \
             --from-file=certs/ca.crt \
             --from-file=certs/client.root.crt \
             --from-file=certs/client.root.key
-          kubectl --context k3d-dx-web-cluster apply -f ./dx-web-server.yml
-          kubectl --context k3d-dx-web-cluster rollout status deploy/dx-web-server --timeout=120s
+          $K apply -f ./dx-web-server.yml
+          if ! $K rollout status deploy/dx-web-server --timeout=10s; then
+            echo "::group::pods"
+            $K get pods -o wide
+            echo "::endgroup::"
+            echo "::group::describe"
+            $K describe pods -l app=dx-web-server
+            echo "::endgroup::"
+            echo "::group::logs"
+            $K logs -l app=dx-web-server --tail=100 || true
+            $K logs -l app=dx-web-server --previous --tail=100 || true
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - name: Port-forward the web server
         run: |
