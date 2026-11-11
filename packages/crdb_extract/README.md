@@ -56,7 +56,8 @@ async fn main() -> Result<(), crdb_extract::Error> {
 - **Whole result in memory.** The database returns one JSON document, so very large tables will use a lot of memory on both sides. Limit with `LIMIT`/`WHERE` or page through the table.
 - **Row order.** An `ORDER BY` inside your query is expected to carry through the wrapper; verify on your cluster version if strict order matters.
 - **TLS and auth** come from the url (`sslmode`, `sslrootcert`, ...).
-- **Errors** are plain `sqlx::Error` (re-exported as `crdb_extract::Error`); a missing `DATABASE_URL` is reported as `Error::Configuration`.
+- **Connect timeout:** connecting gives up after 5 seconds.
+- **Errors** are plain `sqlx::Error` (re-exported as `crdb_extract::Error`). A missing or unreadable `DATABASE_URL`, and any connection failure, are reported as `Error::Configuration` with a message like `could not connect to user@host:26257/db: <cause>`. The password is never included. When the pool only reports a timeout, the crate makes one direct connection attempt to find the underlying cause (refused, TLS, auth, no response).
 
 ## Tests
 

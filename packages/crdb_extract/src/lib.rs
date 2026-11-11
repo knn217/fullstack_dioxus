@@ -10,9 +10,14 @@
 //! # }
 //! ```
 
+use std::fmt::Display;
+use std::str::FromStr;
+use std::time::Duration;
+
 use backon::{ExponentialBuilder, Retryable};
 use serde_json::Value;
-use sqlx::PgPool;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use sqlx::{ConnectOptions, PgPool};
 
 pub use sqlx::Error;
 
@@ -20,6 +25,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Environment variable holding the CockroachDB connection url.
 pub const DATABASE_URL_ENV: &str = "DATABASE_URL";
+
+/// How long to wait for a connection before giving up.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// SQLSTATE CockroachDB returns when a statement must be retried.
 const SERIALIZATION_FAILURE: &str = "40001";
@@ -32,13 +40,46 @@ pub struct Extractor {
 impl Extractor {
     /// Connects using the url in `DATABASE_URL`.
     pub async fn from_env() -> Result<Self> {
-        let url = std::env::var(DATABASE_URL_ENV).map_err(|e| Error::Configuration(Box::new(e)))?;
+        let url = std::env::var(DATABASE_URL_ENV)
+            .map_err(|e| Error::Configuration(format!("{DATABASE_URL_ENV} is not usable: {e}").into()))?;
         Self::connect(&url).await
     }
 
-    /// Connects using an explicit url.
+    /// Connects using an explicit url, giving up after 5 seconds.
+    ///
+    /// Failures are reported as `Error::Configuration` naming the target
+    /// (`user@host:port/database`, never the password) and the underlying cause.
     pub async fn connect(url: &str) -> Result<Self> {
-        Ok(Self { pool: PgPool::connect(url).await? })
+        let options = PgConnectOptions::from_str(url)?;
+        let target = format!(
+            "{}@{}:{}/{}",
+            options.get_username(),
+            options.get_host(),
+            options.get_port(),
+            options.get_database().map_or("(default)", |db| db),
+        );
+
+        let pooled = PgPoolOptions::new()
+            .acquire_timeout(CONNECT_TIMEOUT)
+            .connect_with(options.clone())
+            .await;
+
+        match pooled {
+            Ok(pool) => Ok(Self { pool }),
+            Err(Error::PoolTimedOut) => {
+                // The pool hides why it timed out; one direct attempt usually shows the real cause.
+                let cause = match tokio::time::timeout(CONNECT_TIMEOUT, options.connect()).await {
+                    Ok(Ok(_)) => "pool timed out although a direct connection succeeded".to_owned(),
+                    Ok(Err(err)) => err.to_string(),
+                    Err(_) => format!(
+                        "no response within {}s (check host/port, firewall and sslmode)",
+                        CONNECT_TIMEOUT.as_secs()
+                    ),
+                };
+                Err(connect_error(&target, cause))
+            }
+            Err(err) => Err(connect_error(&target, err)),
+        }
     }
 
     /// Runs `query` and returns all rows as one JSON array of objects, built by the database.
@@ -56,6 +97,10 @@ impl Extractor {
             .when(is_retryable)
             .await
     }
+}
+
+fn connect_error(target: &str, cause: impl Display) -> Error {
+    Error::Configuration(format!("could not connect to {target}: {cause}").into())
 }
 
 fn to_json_sql(input: &str) -> String {
