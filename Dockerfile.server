@@ -27,4 +27,4 @@ WORKDIR /app
 # Copy the bin from builder into the new minimal image
 COPY --from=builder /web_builder/target/dx/web/release/web /app/web
 ENTRYPOINT ["/app/web/server"]
-EXPOSE 8080
+EXPOSE 8090
