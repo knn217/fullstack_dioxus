@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dx-web-server
+  labels:
+    app: dx-web-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dx-web-server
+  template:
+    metadata:
+      labels:
+        app: dx-web-server
+    spec:
+      containers:
+        - name: dx-web-server
+          image: dx_web_server_img:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://root@cockroachdb-public:26257/defaultdb?sslmode=disable"
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dx-web-server-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: dx-web-server
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080

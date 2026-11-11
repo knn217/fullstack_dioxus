@@ -46,3 +46,16 @@ jobs:
             exit 1
           fi
           file "${{ env.DX_WEB_IMAGE_TAR }}"
+
+      - name: Create dedicated k3d cluster for Dioxus web server
+        run: |
+          k3d cluster create dx-web-cluster --agents 1
+
+      - name: Import web server image into dx-web-cluster
+        run: |
+          k3d image import "${{ env.DX_WEB_IMAGE_TAR }}" --cluster dx-web-cluster
+
+      - name: Deploy and run Dioxus web server in its own cluster
+        run: |
+          # Apply deployment manifest to the web cluster
+          kubectl --context k3d-dx-web-cluster apply -f "./dx-web-server.yml"
