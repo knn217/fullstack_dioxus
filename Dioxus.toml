@@ -1,0 +1,37 @@
+[application]
+name = "fullstack_dioxus"
+
+# Point the default sub_package to the fullstack web target package by default
+sub_package = "fullstack" 
+
+[web.app]
+
+# HTML title tag content
+title = "fullstack_dioxus"
+
+# include `assets` in web platform
+[web.resource]
+
+# Additional CSS style files
+style = []
+
+# Additional JavaScript files
+script = []
+
+[web.resource.dev]
+
+# Javascript code file
+# serve: [dev-server] only
+script = []
+
+[web.watcher]
+watch_path = ["packages"]
+
+[application.tools.serve]
+ip = "0.0.0.0"  # Must be 0.0.0.0 inside a Docker container
+port = 8080
+fullstack = true
+
+[bundle]
+identifier = "com.knn217.fullstackapp"
+publisher = "knn217"
