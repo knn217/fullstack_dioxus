@@ -14,7 +14,22 @@ jobs:
         run: curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
       - name: Create k3d cluster and deploy CockroachDB
-        run: bash scripts/k3d-cockroach.sh
+        run: |
+          # Capture stdout and grab the line containing DATABASE_URL=
+          db_env_output=$(bash scripts/k3d-cockroach.sh | grep "DATABASE_URL=" | head -n 1 || true)
+
+          # Check if it's empty
+          if [ -z "$db_env_output" ]; then
+            echo "::error::Failed to find DATABASE_URL in script output."
+            exit 1
+          fi
+
+          # Strip 'export ' if present, remove surrounding quotes, and write cleanly to $GITHUB_ENV
+          cleaned_url=$(echo "$db_env_output" | sed 's/^[[:space:]]*export[[:space:]]*//' | sed 's/^DATABASE_URL=//' | tr -d '"' | tr -d "'")
+
+          echo "DATABASE_URL=$cleaned_url" >> $GITHUB_ENV
+
+          echo "The database URL is successfully configured!"
 
       - name: Port-forward the database
         run: |
