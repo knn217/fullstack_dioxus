@@ -19,7 +19,7 @@ spec:
           image: dx_web_server_img:latest
           imagePullPolicy: Never
           ports:
-            - containerPort: 8090
+            - containerPort: 8080
           env:
             - name: DATABASE_URL
               value: "postgresql://root@cockroachdb-public:26257/defaultdb?sslmode=disable"
@@ -42,4 +42,4 @@ spec:
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 8090
+      targetPort: 8080

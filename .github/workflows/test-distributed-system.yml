@@ -67,14 +67,14 @@ jobs:
 
       - name: Port-forward the web server
         run: |
-          kubectl --context k3d-dx-web-cluster port-forward svc/dx-web-server 8090:8090 >/dev/null 2>&1 &
-          for _ in $(seq 30); do (exec 3<>/dev/tcp/127.0.0.1/8090) 2>/dev/null && break; sleep 1; done
+          kubectl --context k3d-dx-web-cluster port-forward svc/dx-web-server 8080:8080 >/dev/null 2>&1 &
+          for _ in $(seq 30); do (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null && break; sleep 1; done
 
       - name: Ping web server
         run: |
           echo "Testing /ping endpoint..."
           for _ in $(seq 15); do
-            output=$(curl -s -w "---HTTP_CODE_SPLIT---%{http_code}" http://127.0.0.1:8090/ping || true)
+            output=$(curl -s -w "---HTTP_CODE_SPLIT---%{http_code}" http://127.0.0.1:8080/ping || true)
             response="${output%%---HTTP_CODE_SPLIT---*}"
             http_code="${output##*---HTTP_CODE_SPLIT---}"
 
