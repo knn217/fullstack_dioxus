@@ -1,0 +1,38 @@
+name: Setup DB Workflow
+
+on:
+  workflow_call:
+
+jobs:
+  setup-db:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install k3d
+        run: curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+
+      - name: Create k3d cluster and deploy CockroachDB
+        run: |
+          db_env_output=$(bash scripts/k3d-cockroach.sh | grep "DATABASE_URL=" | head -n 1 || true)
+          if [ -z "$db_env_output" ]; then
+            echo "::error::Failed to find DATABASE_URL in script output."
+            exit 1
+          fi
+          cleaned_url=$(printf '%s\n' "$db_env_output" \
+            | sed -E 's/^.*DATABASE_URL=//; s/[[:space:]]+$//' \
+            | tr -d "\"'")
+          echo "DATABASE_URL=$cleaned_url" >> $GITHUB_ENV
+          kubectl port-forward --address 0.0.0.0 svc/crdb-cockroachdb-public 26257:26257 >/tmp/pf-db.log 2>&1 &
+          for _ in $(seq 30); do (exec 3<>/dev/tcp/127.0.0.1/26257) 2>/dev/null && break; sleep 1; done
+
+      - name: Validate the database
+        run: bash scripts/test-cockroach.sh
+
+      # --- ADD THIS STEP TO SAVE CERTS ---
+      - name: Upload database certificates
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-certs
+          path: certs/

@@ -1,0 +1,106 @@
+name: Setup Web Workflow
+
+on:
+  workflow_call:
+
+jobs:
+  setup-web:
+    runs-on: ubuntu-latest
+    env:
+      DX_WEB_IMAGE_TAR: ./dx-web-server.tar
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download web server tarball artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dx-web-server-tar
+          path: .
+
+      # --- ADD THIS STEP TO RESTORE CERTS ---
+      - name: Download database certificates
+        uses: actions/download-artifact@v4
+        with:
+          name: db-certs
+          path: certs/
+
+      - name: Verify dx web tar file exists
+        run: |
+          echo "Checking directory contents:"
+          ls -lh "$(dirname "${{ env.DX_WEB_IMAGE_TAR }}")" || true
+          if [ ! -f "${{ env.DX_WEB_IMAGE_TAR }}" ]; then
+            echo "::error::Backend image tarball not found at ${{ env.DX_WEB_IMAGE_TAR }}"
+            exit 1
+          fi
+          file "${{ env.DX_WEB_IMAGE_TAR }}"
+
+      - name: Create dedicated k3d cluster for Dioxus web server
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d cluster create dx-web-cluster --agents 1
+
+      - name: Import web server image into dx-web-cluster
+        run: |
+          k3d image import "${{ env.DX_WEB_IMAGE_TAR }}" --cluster dx-web-cluster
+
+      - name: Deploy and run Dioxus web server in its own cluster
+        run: |
+          K="kubectl --context k3d-dx-web-cluster"
+
+          HOST_IP=$(docker network inspect k3d-dx-web-cluster -f '{{(index .IPAM.Config 0).Gateway}}')
+          if [ -z "$HOST_IP" ]; then
+            echo "::error::Could not determine the Docker gateway IP for k3d-dx-web-cluster"
+            exit 1
+          fi
+          echo "Web cluster reaches the host at $HOST_IP"
+
+          $K create secret generic dx-db-certs \
+            --from-file=certs/ca.crt \
+            --from-file=certs/client.root.crt \
+            --from-file=certs/client.root.key
+
+          sed "s/__HOST_IP__/${HOST_IP}/g" ./dx-web-server.yml | $K apply -f -
+
+          if ! $K rollout status deploy/dx-web-server --timeout=30s; then
+            $K get pods -o wide
+            $K describe pods -l app=dx-web-server
+            $K logs -l app=dx-web-server --tail=100 || true
+            $K logs -l app=dx-web-server --previous --tail=100 || true
+            exit 1
+          fi
+
+      - name: Port-forward the web server
+        run: |
+          kubectl --context k3d-dx-web-cluster port-forward svc/dx-web-server 8080:8080 >/dev/null 2>&1 &
+          for _ in $(seq 30); do (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null && break; sleep 1; done
+
+      - name: Ping web server
+        run: |
+          echo "Testing /ping endpoint..."
+          for _ in $(seq 15); do
+            output=$(curl -s -w "---HTTP_CODE_SPLIT---%{http_code}" http://127.0.0.1:8080/ping || true)
+            response="${output%%---HTTP_CODE_SPLIT---*}"
+            http_code="${output##*---HTTP_CODE_SPLIT---}"
+
+            if [ "$http_code" = "200" ]; then
+              if [ "$response" = "pong" ]; then
+                echo "Successfully received HTTP 200 and 'pong'"
+                exit 0
+              else
+                echo "Got HTTP 200, but response body was: '$response' (waiting for 'pong')"
+              fi
+            else
+              echo "Got HTTP status: $http_code (waiting for 200)"
+            fi
+            sleep 1
+          done
+          echo "::error::Failed to get HTTP 200 and 'pong'. Last status: $http_code, response: '$response'"
+          exit 1
+
+      - name: Debug web server
+        if: failure()
+        run: |
+          kubectl --context k3d-dx-web-cluster get pods -o wide
+          kubectl --context k3d-dx-web-cluster logs deploy/dx-web-server --tail=100 || true
+          kubectl --context k3d-dx-web-cluster logs deploy/dx-web-server --previous --tail=100 || true

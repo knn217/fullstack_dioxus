@@ -1,0 +1,36 @@
+name: Build Web Workflow
+
+on:
+  workflow_call:
+
+jobs:
+  build-web:
+    runs-on: ubuntu-latest
+    env:
+      DX_WEB_IMAGE_TAR: ./dx-web-server.tar
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Dioxus web server with cache
+        uses: docker/bake-action@v2.3.0
+        with:
+          files: docker-compose.yml
+          targets: dx_web_server
+          push: false
+          set: |
+            dx_web_server.cache-from=type=gha
+            dx_web_server.cache-to=type=gha,mode=max
+            dx_web_server.output=type=docker
+
+      - name: Export Dioxus web image to tarball
+        run: docker save -o "${{ env.DX_WEB_IMAGE_TAR }}" "dx_web_server_img"
+
+      - name: Upload web server tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dx-web-server-tar
+          path: "${{ env.DX_WEB_IMAGE_TAR }}"
