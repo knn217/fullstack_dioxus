@@ -25,7 +25,9 @@ jobs:
           fi
 
           # Strip 'export ' if present, remove surrounding quotes, and write cleanly to $GITHUB_ENV
-          cleaned_url=$(echo "$db_env_output" | sed 's/^[[:space:]]*export[[:space:]]*//' | sed 's/^DATABASE_URL=//' | tr -d '"' | tr -d "'")
+          cleaned_url=$(printf '%s\n' "$db_env_output" \
+            | sed -E 's/^.*DATABASE_URL=//; s/[[:space:]]+$//' \
+            | tr -d "\"'")
 
           echo "DATABASE_URL=$cleaned_url" >> $GITHUB_ENV
 
@@ -33,11 +35,13 @@ jobs:
 
       - name: Port-forward the database
         run: |
-          kubectl port-forward svc/crdb-cockroachdb-public 26257:26257 >/dev/null 2>&1 &
+          kubectl port-forward --address 0.0.0.0 svc/crdb-cockroachdb-public 26257:26257 >/tmp/pf-db.log 2>&1 &
           for _ in $(seq 30); do (exec 3<>/dev/tcp/127.0.0.1/26257) 2>/dev/null && break; sleep 1; done
 
       - name: Validate the database
-        run: bash scripts/test-cockroach.sh
+        run: |
+          echo "DATABASE_URL is: $DATABASE_URL"
+          bash scripts/test-cockroach.sh
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -77,8 +81,12 @@ jobs:
 
       - name: Deploy and run Dioxus web server in its own cluster
         run: |
-          # Apply deployment manifest to the web cluster
-          kubectl --context k3d-dx-web-cluster apply -f "./dx-web-server.yml"
+          kubectl --context k3d-dx-web-cluster create secret generic dx-db-certs \
+            --from-file=certs/ca.crt \
+            --from-file=certs/client.root.crt \
+            --from-file=certs/client.root.key
+          kubectl --context k3d-dx-web-cluster apply -f ./dx-web-server.yml
+          kubectl --context k3d-dx-web-cluster rollout status deploy/dx-web-server --timeout=120s
 
       - name: Port-forward the web server
         run: |
@@ -107,3 +115,10 @@ jobs:
           done
           echo "::error::Failed to get HTTP 200 and 'pong'. Last status: $http_code, response: '$response'"
           exit 1
+
+      - name: Debug web server
+        if: failure()
+        run: |
+          kubectl --context k3d-dx-web-cluster get pods -o wide
+          kubectl --context k3d-dx-web-cluster logs deploy/dx-web-server --tail=100 || true
+          kubectl --context k3d-dx-web-cluster logs deploy/dx-web-server --previous --tail=100 || true

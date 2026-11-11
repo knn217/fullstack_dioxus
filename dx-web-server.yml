@@ -21,8 +21,23 @@ spec:
           ports:
             - containerPort: 8080
           env:
+            - name: IP
+              value: "0.0.0.0"
+            - name: PORT
+              value: "8080"
             - name: DATABASE_URL
-              value: "postgresql://root@crdb-cockroachdb-public.default.svc.cluster.local:26257/defaultdb?sslmode=disable"
+              value: "postgresql://root@host.k3d.internal:26257/defaultdb?sslmode=verify-ca&sslrootcert=/certs/ca.crt&sslcert=/certs/client.root.crt&sslkey=/certs/client.root.key"
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 3
+            failureThreshold: 20
+          volumeMounts:
+            - name: db-certs
+              mountPath: /certs
+              readOnly: true
           resources:
             limits:
               cpu: "500m"
@@ -30,6 +45,11 @@ spec:
             requests:
               cpu: "100m"
               memory: "128Mi"
+      volumes:
+        - name: db-certs
+          secret:
+            secretName: dx-db-certs
+            defaultMode: 0444
 ---
 apiVersion: v1
 kind: Service
