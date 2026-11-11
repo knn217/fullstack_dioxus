@@ -6,7 +6,7 @@ const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 
 #[component]
-pub fn App() -> Element {
+pub fn app() -> Element {
     rsx! {
         // Global app resources
         document::Link { rel: "icon", href: FAVICON }
