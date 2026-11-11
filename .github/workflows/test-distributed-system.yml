@@ -74,12 +74,21 @@ jobs:
         run: |
           echo "Testing /ping endpoint..."
           for _ in $(seq 15); do
-            response=$(curl -s http://127.0.0.1:8090/ping || true)
-            if [ "$response" = "pong" ]; then
-              echo "Successfully received: pong"
-              exit 0
+            output=$(curl -s -w "---HTTP_CODE_SPLIT---%{http_code}" http://127.0.0.1:8090/ping || true)
+            response="${output%%---HTTP_CODE_SPLIT---*}"
+            http_code="${output##*---HTTP_CODE_SPLIT---}"
+
+            if [ "$http_code" = "200" ]; then
+              if [ "$response" = "pong" ]; then
+                echo "Successfully received HTTP 200 and 'pong'"
+                exit 0
+              else
+                echo "Got HTTP 200, but response body was: '$response' (waiting for 'pong')"
+              fi
+            else
+              echo "Got HTTP status: $http_code (waiting for 200)"
             fi
             sleep 1
           done
-          echo "::error::Failed to receive 'pong' from /ping endpoint. Got: '$response'"
+          echo "::error::Failed to get HTTP 200 and 'pong'. Last status: $http_code, response: '$response'"
           exit 1
