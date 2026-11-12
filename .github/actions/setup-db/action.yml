@@ -21,7 +21,13 @@ runs:
     - name: Port-forward the database
       shell: bash
       run: |
-        kubectl port-forward --address 0.0.0.0 svc/crdb-cockroachdb-public 26257:26257 >/tmp/pf-db.log 2>&1 &
+        cat > /tmp/pf.sh <<'EOF'
+        while true; do
+          kubectl port-forward --address 0.0.0.0 svc/crdb-cockroachdb-public 26257:26257 >>/tmp/pf-db.log 2>&1
+          sleep 1
+        done
+        EOF
+        nohup bash /tmp/pf.sh >/dev/null 2>&1 &
         for _ in $(seq 30); do (exec 3<>/dev/tcp/127.0.0.1/26257) 2>/dev/null && break; sleep 1; done
 
     - name: Migrate the database
@@ -33,3 +39,12 @@ runs:
     - name: Validate the database
       shell: bash
       run: bash scripts/test-cockroach.sh
+
+    - name: Diagnostics
+      if: failure()
+      shell: bash
+      run: |
+        echo "--- port-forward log ---"; cat /tmp/pf-db.log || true
+        echo "--- pods ---"; kubectl get pods -o wide || true
+        echo "--- restarts / last state ---"; kubectl describe pods -l app.kubernetes.io/name=cockroachdb | grep -E "Restart Count|Last State|Reason|OOM" || true
+        echo "--- cockroach logs ---"; kubectl logs -l app.kubernetes.io/name=cockroachdb --tail=100 --all-containers || true
