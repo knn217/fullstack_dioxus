@@ -1,17 +1,24 @@
 #!/usr/bin/env bash
-# Validate the DB from OUTSIDE the cluster, using DATABASE_URL (certs are read from the host paths in the URL).
-# Prerequisites (not handled here):
-#   - kubectl port-forward svc/crdb-cockroachdb-public 26257:26257
-#   - DATABASE_URL exported (printed at the end of scripts/k3d-cockroach.sh)
 set -euo pipefail
 
 SCRIPTDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-: "${DATABASE_URL:?DATABASE_URL is not set, see the end of the scripts/k3d-cockroach.sh output}"
+: "${DATABASE_URL:?DATABASE_URL is not set}"
 
-# Strip the username (e.g., root@) from DATABASE_URL for JDBC/Flyway compatibility,
-# as pgjdbc does not support user@host in the URI authority section.
-JDBC_URL="jdbc:$(echo "$DATABASE_URL" | sed -E 's|^(postgresql://)[^@]*@|\1|')"
+# Drop scheme and the "user@" prefix, but KEEP the query string
+rest="${DATABASE_URL#*://}"
+hostpart="${rest#*@}"   # unchanged if there is no '@'
+
+# pgjdbc can't read Cockroach's PEM key; convert to PKCS#8 DER
+if [[ "$hostpart" =~ sslkey=([^\&]+) ]]; then
+  KEY="${BASH_REMATCH[1]}"
+  PK8="$(mktemp -d)/client.key.pk8"
+  openssl pkcs8 -topk8 -inform PEM -outform DER \
+    -in "$KEY" -out "$PK8" -nocrypt
+  hostpart="${hostpart/sslkey=$KEY/sslkey=$PK8}"
+fi
+
+JDBC_URL="jdbc:postgresql://${hostpart}&tcpKeepAlive=true&socketTimeout=0&connectTimeout=30"
 
 flyway \
   "-url=${JDBC_URL}" \
