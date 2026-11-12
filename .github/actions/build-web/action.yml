@@ -3,32 +3,29 @@ description: 'Sets up buildx, builds Dioxus web server, and exports tarball'
 runs:
   using: "composite"
   steps:
-    - name: Cache cargo build
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo
-          target/
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: ${{ runner.os }}-cargo-
+    # Removed actions/cache: the cargo build runs inside the container,
+    # so ~/.cargo and target/ on the runner were never used.
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
     - name: Build Dioxus web server with cache
-      uses: docker/bake-action@v2.3.0
+      uses: docker/bake-action@v6
+      env:
+        BUILDKIT_PROGRESS: plain   # full per-step log with CACHED markers and timings
       with:
         files: docker-compose.yml
         targets: dx_web_server
         push: false
         set: |
-          dx_web_server.cache-from=type=gha
-          dx_web_server.cache-to=type=gha,mode=max
+          dx_web_server.cache-from=type=gha,scope=dx_web
+          dx_web_server.cache-to=type=gha,scope=dx_web,mode=max
           dx_web_server.output=type=docker
 
     - name: Export Dioxus web image to tarball
       shell: bash
-      run: docker save -o ./dx-web-server.tar "dx_web_server_img"
+      run: |
+        time docker save -o ./dx-web-server.tar "dx_web_server_img"
 
     - name: Verify dx web tar file exists
       shell: bash
@@ -38,3 +35,4 @@ runs:
           exit 1
         fi
         file "./dx-web-server.tar"
+        ls -lh ./dx-web-server.tar

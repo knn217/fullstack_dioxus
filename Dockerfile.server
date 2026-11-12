@@ -1,6 +1,11 @@
-# Stage 1: Compute a recipe file for caching dependencies
+# syntax=docker/dockerfile:1
+
+# Stage 1: base with cargo-chef
+# Pin the tag instead of :latest so the cargo-chef layer isn't busted by base image updates
 FROM ghcr.io/lewimbes/dioxus-docker:latest AS chef
-RUN cargo install cargo-chef
+# Prebuilt binary instead of compiling cargo-chef from source (saves ~2-3 min on a cold cache).
+# If this path doesn't match your base image's cargo home, fall back to: RUN cargo install cargo-chef --locked
+COPY --from=lukemathwalker/cargo-chef:latest-rust-1 /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
 WORKDIR /web_builder
 
 FROM chef AS planner
@@ -8,23 +13,31 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 COPY --from=planner /web_builder/recipe.json recipe.json
-RUN cargo chef cook --profile=release --package=web --recipe-path=recipe.json
 
-# Build the binary for image
+# Cook BOTH targets the way dx builds them. Adjust feature names to match web/Cargo.toml,
+# and mirror whatever `dx bundle --release --package=web --verbose` prints locally.
+RUN rustup target add wasm32-unknown-unknown
+RUN cargo chef cook --release --package=web --no-default-features --features server --recipe-path=recipe.json
+RUN cargo chef cook --release --package=web --no-default-features --features web --target wasm32-unknown-unknown --recipe-path=recipe.json
+
 COPY . .
-RUN dx bundle --release --package=web
 
-# Create a new stage with a minimal image
+# Log how many crates dx had to compile. With a matching cook this should be a handful
+# (your own workspace crates), not hundreds.
+RUN dx bundle --release --package=web 2>&1 | tee /tmp/dx.log \
+    && echo "=== CACHE CHECK: dx bundle compiled $(grep -c 'Compiled \[' /tmp/dx.log) crates ===" \
+    && grep -E 'Compiled \[[0-9]+/[0-9]+\]' /tmp/dx.log | tail -n 1
+
+# Minimal runtime image
 FROM debian:bookworm-slim
-# Install required runtime libraries (like OpenSSL and SSL certificates)
 # RUN apt-get update && apt-get install -y \
 #     libssl3 \
 #     ca-certificates \
 #     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-# Copy the bin from builder into the new minimal image
 COPY --from=builder /web_builder/target/dx/web/release/web /app/web
 ENTRYPOINT ["/app/web/server"]
 EXPOSE 8080
