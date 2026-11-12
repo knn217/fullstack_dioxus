@@ -18,17 +18,18 @@ runs:
         cleaned_url=$(printf '%s\n' "$db_env_output" | sed -E 's/^.*DATABASE_URL=//; s/[[:space:]]+$//' | tr -d "\"'")
         echo "DATABASE_URL=$cleaned_url" >> $GITHUB_ENV
 
-    - name: Port-forward the database
+    - name: Wait for the database load balancer
       shell: bash
       run: |
-        cat > /tmp/pf.sh <<'EOF'
-        while true; do
-          kubectl port-forward --address 0.0.0.0 svc/crdb-cockroachdb-public 26257:26257 >>/tmp/pf-db.log 2>&1
+        kubectl rollout status statefulset/crdb-cockroachdb --timeout=300s
+        for _ in $(seq 60); do
+          openssl s_client -starttls postgres -connect 127.0.0.1:26257 \
+            -CAfile certs/ca.crt </dev/null >/dev/null 2>&1 && exit 0
           sleep 1
         done
-        EOF
-        nohup bash /tmp/pf.sh >/dev/null 2>&1 &
-        for _ in $(seq 30); do (exec 3<>/dev/tcp/127.0.0.1/26257) 2>/dev/null && break; sleep 1; done
+        echo "::error::Database not reachable through the load balancer"
+        kubectl get svc,pods -o wide || true
+        exit 1
 
     - name: Migrate the database
       shell: bash

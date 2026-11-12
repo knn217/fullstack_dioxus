@@ -1,11 +1,11 @@
 name: 'Setup Web'
-description: 'Creates web cluster, imports image, deploys, port-forwards, and tests ping'
+description: 'Creates web cluster, imports image, deploys behind a k3d load balancer, and tests ping'
 runs:
   using: "composite"
   steps:
     - name: Create dedicated k3d cluster for Dioxus web server
       shell: bash
-      run: k3d cluster create dx-web-cluster --agents 1
+      run: k3d cluster create dx-web-cluster --agents 1 -p "8080:8080@loadbalancer" --wait
 
     - name: Import web server image into dx-web-cluster
       shell: bash
@@ -28,28 +28,16 @@ runs:
 
         sed "s/__HOST_IP__/${HOST_IP}/g" ./dx-web-server.yml | $K apply -f -
 
-        if ! $K rollout status deploy/dx-web-server --timeout=30s; then
+        if ! $K rollout status deploy/dx-web-server --timeout=120s; then
           $K get pods -o wide
           $K logs -l app=dx-web-server --tail=100 || true
           exit 1
         fi
 
-    - name: Port-forward the web server
+    - name: Ping web server through the load balancer
       shell: bash
       run: |
-        cat > /tmp/pf-web.sh <<'EOF'
-        while true; do
-          kubectl --context k3d-dx-web-cluster port-forward svc/dx-web-server 8080:8080 >>/tmp/pf-web.log 2>&1
-          sleep 1
-        done
-        EOF
-        nohup bash /tmp/pf-web.sh >/dev/null 2>&1 &
-        for _ in $(seq 30); do (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null && break; sleep 1; done
-
-    - name: Ping web server
-      shell: bash
-      run: |
-        for _ in $(seq 15); do
+        for _ in $(seq 60); do
           output=$(curl -s -w "---HTTP_CODE_SPLIT---%{http_code}" http://127.0.0.1:8080/ping || true)
           response="${output%%---HTTP_CODE_SPLIT---*}"
           http_code="${output##*---HTTP_CODE_SPLIT---}"
@@ -61,4 +49,6 @@ runs:
           sleep 1
         done
         echo "::error::Failed to get HTTP 200 and 'pong'"
+        kubectl --context k3d-dx-web-cluster get svc,pods -o wide || true
+        kubectl --context k3d-dx-web-cluster logs -l app=dx-web-server --tail=50 || true
         exit 1
