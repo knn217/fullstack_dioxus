@@ -26,7 +26,9 @@ runs:
 
     - name: Migrate the database
       shell: bash
-      run: bash scripts/migrate-cockroach.sh
+      run: |
+        bash scripts/install-flyway.sh
+        bash scripts/migrate-cockroach.sh
 
     - name: Validate the database
       shell: bash
