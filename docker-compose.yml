@@ -10,6 +10,10 @@ services:
     ports:
       - "8080:8080"
 
-# volumes:
-#   db:
-#     driver: local
+  # Dedicated service to extract SBOMs to the host without keeping them in the runtime image
+  sbom_export:
+    image: scratch
+    build:
+      context: .
+      dockerfile: ./Dockerfile.server
+      target: sbom-export

@@ -1,5 +1,5 @@
 name: 'Build Web'
-description: 'Sets up buildx, builds Dioxus web server, and exports tarball'
+description: 'Sets up buildx, builds Dioxus web server, exports tarball, and extracts SBOMs'
 runs:
   using: "composite"
   steps:
@@ -23,19 +23,20 @@ runs:
           ${{ github.ref == 'refs/heads/main' && 'dx_web_server.cache-to=type=gha,scope=dx_web,mode=max,compression=zstd,ignore-error=true' || '' }}
           dx_web_server.output=type=cacheonly
 
-    # Step 2: build the full image straight to a tarball. The deps layers come from the
-    # builder's local cache, and the big dx bundle layer is never exported.
-    - name: Build Dioxus web server
+    # Step 2: build the full image tarball and extract SBOMs concurrently
+    - name: Build Dioxus web server & Export SBOMs
       uses: docker/bake-action@v6
       env:
         BUILDKIT_PROGRESS: plain
       with:
         files: docker-compose.yml
-        targets: dx_web_server
+        targets: dx_web_server,sbom_export
         push: false
         set: |
           dx_web_server.cache-from=type=gha,scope=dx_web
           dx_web_server.output=type=docker,dest=./dx-web-server.tar
+          sbom_export.cache-from=type=gha,scope=dx_web
+          sbom_export.output=type=local,dest=./artifacts/sbom
 
     - name: Verify dx web tar file exists
       shell: bash
@@ -46,3 +47,13 @@ runs:
         fi
         file "./dx-web-server.tar"
         ls -lh ./dx-web-server.tar
+
+    - name: Verify SBOM files exist
+      shell: bash
+      run: |
+        if [ ! -d "./artifacts/sbom" ] || [ -z "$(ls -A ./artifacts/sbom)" ]; then
+          echo "::error::SBOM artifacts not found"
+          exit 1
+        fi
+        echo "=== Generated SBOM Files ==="
+        ls -lh ./artifacts/sbom

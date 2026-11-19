@@ -28,19 +28,63 @@ RUN cargo chef cook --release --package=web --no-default-features --features web
 # App build stage: changes every run, never exported to cache
 FROM deps AS builder
 COPY . .
+
+# Install Syft for SBOM generation
+RUN curl -sSfL https://get.anchore.io/syft | sh -s -- -b /usr/local/bin
+
+# Build the Dioxus application bundle
 # Log how many crates dx had to compile. With a matching cook this should be a handful, not hundreds.
 RUN dx bundle --release --package=web 2>&1 | tee /tmp/dx.log \
     && echo "=== CACHE CHECK: dx bundle compiled $(grep -c 'Compiled \[' /tmp/dx.log) crates ===" \
     && grep -E 'Compiled \[[0-9]+/[0-9]+\]' /tmp/dx.log | tail -n 1
 
+# Generate comprehensive SBOMs
+RUN mkdir -p /sbom-output \
+    && syft dir:/web_builder/target/dx/web/release/web -o cyclonedx-json=/sbom-output/sbom-runtime.json \
+    && syft dir:/web_builder/target/dx/web/release/web -o spdx-json=/sbom-output/sbom-runtime.spdx.json \
+    && syft dir:. \
+    --exclude './target/**' \
+    --exclude './artifacts/**' \
+    --exclude './.git/**' \
+    -o cyclonedx-json=/sbom-output/sbom-source.json
+
+# Dedicated stage solely for exporting SBOMs to the host
+FROM scratch AS sbom-export
+COPY --from=builder /sbom-output /
+
 # Minimal runtime image
-FROM debian:bookworm-slim
-# RUN apt-get update && apt-get install -y \
-#     libssl3 \
-#     ca-certificates \
-#     && rm -rf /var/lib/apt/lists/*
+FROM debian:bookworm-slim AS runtime
+
+# Install runtime dependencies and CA certificates
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libssl3 \
+        ca-certificates \
+        && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
 WORKDIR /app
 
+# Copy the built Dioxus server application and assets
 COPY --from=builder /web_builder/target/dx/web/release/web /app/web
+
+# Copy generated SBOMs into the runtime image
+COPY --from=builder /web_builder/sbom-*.json /app/
+
+# Set ownership to non-root user
+RUN chown -R appuser:appuser /app
+
+# Add OCI metadata labels
+LABEL org.opencontainers.image.title="Dioxus Fullstack Server" \
+      org.opencontainers.image.description="Dioxus web application server" \
+      org.opencontainers.image.licenses="MIT OR Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/yourcompany/your-repo"
+
+# Switch to non-root user
+USER appuser
+
 ENTRYPOINT ["/app/web/server"]
 EXPOSE 8080
