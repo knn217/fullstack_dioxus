@@ -24,6 +24,10 @@ api = { path = "packages/api" }
 fullstack = { path = "packages/fullstack" }
 crdb_extract = { path = "packages/crdb_extract" }
 
+# [patch.crates-io]
+# rand = { git = "https://github.com/rust-random/rand.git", tag = "0.10.4" }
+# glib = { git = "https://github.com/gtk-rs/gtk-rs-core.git", tag = "0.22.11" }
+
 [workspace.lints.clippy]
 # Enable a whole group, setting priority so individual overrides work smoothly
 # pedantic = { level = "warn", priority = -1 }
