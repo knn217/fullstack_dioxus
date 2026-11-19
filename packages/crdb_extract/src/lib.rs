@@ -17,7 +17,7 @@ use std::time::Duration;
 use backon::{ExponentialBuilder, Retryable};
 use serde_json::Value;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use sqlx::{ConnectOptions, PgPool};
+use sqlx::{ConnectOptions, PgPool, AssertSqlSafe};
 
 pub use sqlx::Error;
 
@@ -92,7 +92,7 @@ impl Extractor {
     pub async fn fetch_json(&self, query: &str) -> Result<Value> {
         let sql = to_json_sql(query);
         let sql = sql.as_str();
-        (move || async move { sqlx::query_scalar::<sqlx::Postgres, Value>(sql).fetch_one(&self.pool).await })
+        (move || async move { sqlx::query_scalar::<sqlx::Postgres, Value>(AssertSqlSafe(sql.to_owned())).fetch_one(&self.pool).await })
             .retry(ExponentialBuilder::default().with_max_times(3))
             .when(is_retryable)
             .await
