@@ -72,6 +72,7 @@ runs:
           trivy sbom \
             --scanners=license \
             --config=trivy.yml \
+            --ignorefile=.trivyignore \
             --exit-code=1 \
             "$sbom" || exit $?
         done
@@ -85,6 +86,7 @@ runs:
           trivy sbom \
             --scanners=vuln \
             --config=trivy.yml \
+            --ignorefile=.trivyignore \
             --exit-code=1 \
             "$sbom" || exit $?
         done
