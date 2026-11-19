@@ -5,7 +5,7 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json"] }
 serde_json = "1"
 backon = "1"
 tokio = { version = "1", features = ["time"] }
