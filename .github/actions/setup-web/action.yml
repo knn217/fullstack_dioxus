@@ -5,7 +5,10 @@ runs:
   steps:
     - name: Create dedicated k3d cluster for Dioxus web server
       shell: bash
-      run: k3d cluster create dx-web-cluster --agents 1 -p "8080:8080@loadbalancer" --wait
+      run: |
+        sudo sysctl -w fs.inotify.max_user_instances=1024
+        sudo sysctl -w fs.inotify.max_user_watches=524288
+        k3d cluster create dx-web-cluster --agents 1 -p "8080:8080@loadbalancer" --wait
 
     - name: Import web server image into dx-web-cluster
       shell: bash
